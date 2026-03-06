@@ -535,11 +535,3 @@ def write_assignments_to_file(assignments: np.ndarray):
     np.savetxt(
         "cluster_assignments.csv", assignments.astype(int), fmt="%i", delimiter=","
     )
-
-
-def create_weights_dir():
-    """
-    Creates a directory for the weights of the Autoencoder and the Siamese network
-    """
-    if not os.path.exists("weights"):
-        os.makedirs("weights")

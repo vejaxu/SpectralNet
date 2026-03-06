@@ -2,10 +2,14 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split, TensorDataset
-from sklearn.neighbors import kneighbors_graph
 from tqdm import trange
-from spectralnet._utils import *
 from ._trainer import Trainer
+from .._utils import (
+    make_batch_for_sparse_grapsh,
+    get_nearest_neighbors,
+    compute_scale,
+    get_gaussian_kernel,
+)
 from .._losses import SpectralNetLoss
 from .._models import SpectralNetModel
 
@@ -157,9 +161,8 @@ class SpectralTrainer:
                     X = make_batch_for_sparse_grapsh(X)
 
                 Y = self.spectral_net(X, should_update_orth_weights=False)
-                with torch.no_grad():
-                    if self.siamese_net is not None:
-                        X = self.siamese_net.forward_once(X)
+                if self.siamese_net is not None:
+                    X = self.siamese_net.forward_once(X)
 
                 W = self._get_affinity_matrix(X)
 

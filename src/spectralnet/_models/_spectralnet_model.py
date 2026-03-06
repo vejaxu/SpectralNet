@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 import torch.nn as nn
 
 
@@ -26,7 +25,7 @@ class SpectralNetModel(nn.Module):
 
     def _make_orthonorm_weights(self, Y: torch.Tensor) -> torch.Tensor:
         """
-        Orthonormalize the output of the network using the Cholesky decomposition.
+        Orthonormalize the output of the network using QR decomposition.
 
         Parameters
         ----------
@@ -46,7 +45,7 @@ class SpectralNetModel(nn.Module):
 
         m = Y.shape[0]
         _, R = torch.linalg.qr(Y)
-        orthonorm_weights = np.sqrt(m) * torch.inverse(R)
+        orthonorm_weights = m**0.5 * torch.inverse(R)
         return orthonorm_weights
 
     def forward(

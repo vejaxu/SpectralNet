@@ -269,8 +269,10 @@ class SpectralNet:
             The raw batch and the encoded batch.
 
         """
-        permuted_indices = torch.randperm(batch_size)
-        X_raw = self._X.view(self._X.size(0), -1)
+        n = len(self._X)
+        batch_size = min(batch_size, n)
+        permuted_indices = torch.randperm(n)[:batch_size]
+        X_raw = self._X.view(n, -1)
         X_encoded = X_raw
 
         if self.should_use_ae:

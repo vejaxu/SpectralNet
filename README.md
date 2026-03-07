@@ -8,10 +8,37 @@ This package is based on the following paper - [SpectralNet](https://openreview.
 
 ## Installation
 
-You can install the latest package version via
+### From PyPI
 
 ```bash
 pip install spectralnet
+```
+
+### From source (with pixi)
+
+[pixi](https://pixi.sh) is the recommended way to set up a fully reproducible
+development environment after cloning the repo.
+
+```bash
+# 1. Install pixi (once, system-wide)
+curl -fsSL https://pixi.sh/install.sh | sh
+
+# 2. Clone and enter the repo
+git clone https://github.com/shaham-lab/SpectralNet.git
+cd SpectralNet
+
+# 3. Install all dependencies (conda + PyPI) into an isolated environment
+pixi install
+
+# 4. Run the test suite to verify everything works
+pixi run test
+```
+
+After `pixi install` you can prefix any command with `pixi run` to execute it
+inside the managed environment, or activate the environment with:
+
+```bash
+pixi shell
 ```
 
 ## Usage

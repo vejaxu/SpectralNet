@@ -43,44 +43,88 @@ pixi shell
 
 ## Usage
 
-### Clustering
+### Clustering — small datasets (in-memory tensor)
 
-The basic functionality is quite intuitive and easy to use, e.g.,
+For datasets that fit in RAM, pass a `torch.Tensor` directly:
 
 ```python
 from spectralnet import SpectralNet
 
 spectralnet = SpectralNet(n_clusters=10)
-spectralnet.fit(X) # X is the dataset and it should be a torch.Tensor
-cluster_assignments = spectralnet.predict(X) # Get the final assignments to clusters
+spectralnet.fit(X)                          # X: torch.Tensor of shape (N, ...)
+cluster_assignments = spectralnet.predict(X)
 ```
 
-If you have labels to your dataset and you want to measure ACC and NMI you can do the following:
+To measure ACC and NMI when labels are available:
 
 ```python
-from spectralnet import SpectralNet
-from spectralnet import Metrics
-
+from spectralnet import SpectralNet, Metrics
 
 spectralnet = SpectralNet(n_clusters=2)
-spectralnet.fit(X, y) # X is the dataset and it should be a torch.Tensor
-cluster_assignments = spectralnet.predict(X) # Get the final assignments to clusters
+spectralnet.fit(X, y)                       # y: integer label tensor
+cluster_assignments = spectralnet.predict(X)
 
-y = y_train.detach().cpu().numpy() # In case your labels are of torch.Tensor type.
-acc_score = Metrics.acc_score(cluster_assignments, y, n_clusters=2)
-nmi_score = Metrics.nmi_score(cluster_assignments, y)
-print(f"ACC: {np.round(acc_score, 3)}")
-print(f"NMI: {np.round(nmi_score, 3)}")
+y_np = y.detach().cpu().numpy()
+acc_score = Metrics.acc_score(cluster_assignments, y_np, n_clusters=2)
+nmi_score = Metrics.nmi_score(cluster_assignments, y_np)
+print(f"ACC: {acc_score:.3f}  NMI: {nmi_score:.3f}")
 ```
 
-You can read the code docs for more information and functionalities<br>
+### Clustering — large datasets (streaming from disk)
 
-#### Running examples
+For datasets too large to hold in RAM (e.g. millions of images on disk),
+define a `torch.utils.data.Dataset` that loads **one sample at a time**
+and pass it to `fit()`. Nothing large ever lives in memory at once — every
+trainer pulls mini-batches through its own `DataLoader` internally.
 
-In order to run the model on twomoons or MNIST datasets, you should first cd to the examples folder and then run:<br>
-`python3 cluster_twomoons.py`<br>
-or<br>
-`python3 cluster_mnist.py`
+```python
+from torch.utils.data import Dataset, DataLoader
+from spectralnet import SpectralNet
+from PIL import Image
+import torchvision.transforms as T
+import os
+
+class ImageFolderDataset(Dataset):
+    def __init__(self, root):
+        self.paths = [
+            os.path.join(root, f) for f in os.listdir(root) if f.endswith(".jpg")
+        ]
+        self.transform = T.Compose([T.Resize(64), T.ToTensor(), T.Normalize(0.5, 0.5)])
+
+    def __len__(self):
+        return len(self.paths)
+
+    def __getitem__(self, idx):
+        return self.transform(Image.open(self.paths[idx]).convert("RGB"))
+
+dataset = ImageFolderDataset("/path/to/images")
+
+spectralnet = SpectralNet(
+    n_clusters=10,
+    should_use_ae=True,              # compress images before clustering
+    ae_hiddens=[2048, 512, 64, 10],
+    spectral_hiddens=[512, 512, 10],
+)
+spectralnet.fit(dataset)
+
+# predict() also accepts a DataLoader for large test sets
+test_loader = DataLoader(dataset, batch_size=512, shuffle=False)
+cluster_assignments = spectralnet.predict(test_loader)
+```
+
+> **Note on Siamese training with large datasets:** the Siamese network
+> builds exact k-NN pairs, which requires loading all features into memory.
+> For very large datasets either disable it (`should_use_siamese=False`),
+> enable approximate neighbours (`siamese_use_approx=True`), or pass a
+> representative subset as the Dataset.
+
+### Running examples
+
+```bash
+cd examples
+python3 cluster_twomoons.py
+python3 cluster_mnist.py
+```
 
 <!-- ### Data reduction and visualization
 

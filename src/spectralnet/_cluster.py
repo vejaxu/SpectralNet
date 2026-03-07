@@ -243,15 +243,17 @@ class SpectralNet:
         np.ndarray
             The cluster assignments for the given data.
         """
-        X = X.view(X.size(0), -1)
-        X = X.to(self.device)
-
+        X_flat = X.view(X.size(0), -1)
+        chunks = []
         with torch.no_grad():
-            if self.should_use_ae:
-                X = self.ae_net.encode(X)
-            self.embeddings_ = self.spec_net(X, should_update_orth_weights=False)
-            self.embeddings_ = self.embeddings_.detach().cpu().numpy()
-
+            for start in range(0, len(X_flat), self.spectral_batch_size):
+                chunk = X_flat[start : start + self.spectral_batch_size].to(self.device)
+                if self.should_use_ae:
+                    chunk = self.ae_net.encode(chunk)
+                chunks.append(
+                    self.spec_net(chunk, should_update_orth_weights=False).cpu()
+                )
+        self.embeddings_ = torch.cat(chunks).numpy()
         cluster_assignments = self._get_clusters_by_kmeans(self.embeddings_)
         return cluster_assignments
 
@@ -272,18 +274,17 @@ class SpectralNet:
         n = len(self._X)
         batch_size = min(batch_size, n)
         permuted_indices = torch.randperm(n)[:batch_size]
-        X_raw = self._X.view(n, -1)
-        X_encoded = X_raw
 
-        if self.should_use_ae:
-            X_encoded = self.ae_trainer.embed(self._X)
+        # Select the raw batch first — avoids encoding the full dataset.
+        X_raw = self._X.view(n, -1)[permuted_indices]
+        X_encoded = X_raw.to(self.device)
 
-        if self.should_use_siamese:
-            X_encoded = self.siamese_net.forward_once(X_encoded)
+        with torch.no_grad():
+            if self.should_use_ae:
+                X_encoded = self.ae_net.encode(X_encoded)
+            if self.should_use_siamese:
+                X_encoded = self.siamese_net.forward_once(X_encoded)
 
-        X_encoded = X_encoded[permuted_indices]
-        X_raw = X_raw[permuted_indices]
-        X_encoded = X_encoded.to(self.device)
         return X_raw, X_encoded
 
     def _get_clusters_by_kmeans(self, embeddings: np.ndarray) -> np.ndarray:

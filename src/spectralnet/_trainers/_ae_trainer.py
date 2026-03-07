@@ -91,12 +91,15 @@ class AETrainer:
         return valid_loss
 
     def embed(self, X: torch.Tensor) -> torch.Tensor:
-        print("Embedding data ...")
+        """Encode the full dataset in chunks to avoid OOM on large inputs."""
         self.ae_net.eval()
+        X_flat = X.view(X.size(0), -1)
+        chunks = []
         with torch.no_grad():
-            X = X.view(X.size(0), -1)
-            encoded_data = self.ae_net.encode(X.to(self.device))
-        return encoded_data
+            for start in range(0, len(X_flat), self.batch_size):
+                chunk = X_flat[start : start + self.batch_size].to(self.device)
+                chunks.append(self.ae_net.encode(chunk).cpu())
+        return torch.cat(chunks)
 
     def _get_data_loader(self) -> tuple:
         trainset_len = int(len(self.X) * 0.9)

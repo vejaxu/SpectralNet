@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write       # push tags / GitHub release
+  id-token: write       # OIDC token for trusted PyPI publishing
+
+jobs:
+  release:
+    name: Semantic release & publish
+    runs-on: ubuntu-latest
+    # Only run when CI passes — avoid publishing broken code
+    needs: []
+
+    concurrency:
+      group: release
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history so PSR can read all commits
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install build tools
+        run: pip install python-semantic-release build
+
+      # python-semantic-release reads commit history, bumps the version in
+      # setup.cfg, creates a tag, a GitHub release, and builds the package.
+      - name: Run semantic-release
+        id: semrel
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: semantic-release version
+
+      # Build sdist + wheel only when a new version was actually released
+      - name: Build distribution
+        if: steps.semrel.outputs.released == 'true'
+        run: python -m build
+
+      # Publish to PyPI via OIDC (no API token needed — configure trusted
+      # publisher on pypi.org: owner=<your-gh-username>,
+      # repo=SpectralNet, workflow=release.yml, environment=pypi)
+      - name: Publish to PyPI
+        if: steps.semrel.outputs.released == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          print-hash: true

@@ -281,10 +281,10 @@ def get_nearest_neighbors(
         Y = X
     if len(X) < k:
         k = len(X)
-    X = X.cpu().detach().numpy()
-    Y = Y.cpu().detach().numpy()
-    nbrs = NearestNeighbors(n_neighbors=k).fit(X)
-    Dis, Ids = nbrs.kneighbors(X)
+    X_np = X.cpu().detach().numpy()
+    Y_np = Y.cpu().detach().numpy()
+    nbrs = NearestNeighbors(n_neighbors=k).fit(X_np)
+    Dis, Ids = nbrs.kneighbors(Y_np)
     return Dis, Ids
 
 
@@ -375,8 +375,9 @@ def get_gaussian_kernel(
     """
 
     if not is_local:
-        # global scale
-        W = torch.exp(-torch.pow(D, 2) / (scale**2))
+        # global scale — ensure scale is a plain Python float to avoid
+        # NumPy scalar __array_wrap__ deprecation with torch operations
+        W = torch.exp(-torch.pow(D, 2) / (float(scale) ** 2))
     else:
         # local scales
         W = torch.exp(
@@ -385,9 +386,10 @@ def get_gaussian_kernel(
         )
     if Ids is not None:
         n, k = Ids.shape
-        mask = torch.zeros([n, n]).to(device=device)
-        for i in range(len(Ids)):
-            mask[i, Ids[i]] = 1
+        mask = torch.zeros([n, n], device=device)
+        row_idx = torch.arange(n, device=device).repeat_interleave(k)
+        col_idx = torch.tensor(Ids, device=device).reshape(-1)
+        mask[row_idx, col_idx] = 1
         W = W * mask
     sym_W = (W + torch.t(W)) / 2.0
     return sym_W
@@ -419,9 +421,10 @@ def get_t_kernel(
     W = torch.pow(1 + torch.pow(D, 2), -1)
     if Ids is not None:
         n, k = Ids.shape
-        mask = torch.zeros([n, n]).to(device=device)
-        for i in range(len(Ids)):
-            mask[i, Ids[i]] = 1
+        mask = torch.zeros([n, n], device=device)
+        row_idx = torch.arange(n, device=device).repeat_interleave(k)
+        col_idx = torch.tensor(Ids, device=device).reshape(-1)
+        mask[row_idx, col_idx] = 1
         W = W * mask
     sym_W = (W + W.T) / 2.0
     return sym_W
@@ -532,11 +535,3 @@ def write_assignments_to_file(assignments: np.ndarray):
     np.savetxt(
         "cluster_assignments.csv", assignments.astype(int), fmt="%i", delimiter=","
     )
-
-
-def create_weights_dir():
-    """
-    Creates a directory for the weights of the Autoencoder and the Siamese network
-    """
-    if not os.path.exists("weights"):
-        os.makedirs("weights")

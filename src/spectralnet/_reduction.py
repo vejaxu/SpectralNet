@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-from ._utils import *
+from ._utils import get_affinity_matrix, get_laplacian, plot_laplacian_eigenvectors
 from ._cluster import SpectralNet
 from sklearn.cluster import KMeans
 from ._metrics import Metrics

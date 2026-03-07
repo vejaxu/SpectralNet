@@ -6,7 +6,7 @@ import torch.optim as optim
 from tqdm import trange
 from ._trainer import Trainer
 from .._models import AEModel
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Dataset, TensorDataset, random_split
 
 
 class AETrainer:
@@ -20,18 +20,17 @@ class AETrainer:
         self.patience = self.ae_config["patience"]
         self.architecture = self.ae_config["hiddens"]
         self.batch_size = self.ae_config["batch_size"]
-        self.weights_dir = "spectralnet/_trainers/weights"
-        self.weights_path = "spectralnet/_trainers/weights/ae_weights.pth"
-        if not os.path.exists(self.weights_dir):
-            os.makedirs(self.weights_dir)
+        _here = os.path.dirname(os.path.abspath(__file__))
+        self.weights_dir = os.path.join(_here, "weights")
+        self.weights_path = os.path.join(self.weights_dir, "ae_weights.pth")
+        os.makedirs(self.weights_dir, exist_ok=True)
 
-    def train(self, X: torch.Tensor) -> AEModel:
-        self.X = X.view(X.size(0), -1)
+    def train(self, dataset: Dataset) -> AEModel:
+        self._dataset = dataset
         self.criterion = nn.MSELoss()
 
-        self.ae_net = AEModel(self.architecture, input_dim=self.X.shape[1]).to(
-            self.device
-        )
+        x0, _ = dataset[0]
+        self.ae_net = AEModel(self.architecture, input_dim=x0.numel()).to(self.device)
 
         self.optimizer = optim.Adam(self.ae_net.parameters(), lr=self.lr)
 
@@ -49,9 +48,8 @@ class AETrainer:
         t = trange(self.epochs, leave=True)
         for epoch in t:
             train_loss = 0.0
-            for batch_x in train_loader:
-                batch_x = batch_x.to(self.device)
-                batch_x = batch_x.view(batch_x.size(0), -1)
+            for x, _ in train_loader:
+                batch_x = x.to(self.device)
                 self.optimizer.zero_grad()
                 output = self.ae_net(batch_x)
                 loss = self.criterion(output, batch_x)
@@ -81,27 +79,35 @@ class AETrainer:
         self.ae_net.eval()
         valid_loss = 0.0
         with torch.no_grad():
-            for batch_x in valid_loader:
-                batch_x = batch_x.to(self.device)
-                batch_x = batch_x.view(batch_x.size(0), -1)
+            for x, _ in valid_loader:
+                batch_x = x.to(self.device)
                 output = self.ae_net(batch_x)
                 loss = self.criterion(output, batch_x)
                 valid_loss += loss.item()
         valid_loss /= len(valid_loader)
         return valid_loss
 
-    def embed(self, X: torch.Tensor) -> torch.Tensor:
-        print("Embedding data ...")
+    def embed(self, dataset: Dataset) -> TensorDataset:
+        """Encode an entire dataset chunk-by-chunk to avoid OOM on large inputs.
+
+        Returns a ``TensorDataset`` of ``(encoded_x, y)`` pairs on CPU,
+        ready to be passed directly to the downstream Siamese or Spectral
+        trainer as a new Dataset.
+        """
         self.ae_net.eval()
+        loader = DataLoader(dataset, batch_size=self.batch_size, shuffle=False)
+        encoded_chunks, label_chunks = [], []
         with torch.no_grad():
-            X = X.view(X.size(0), -1)
-            encoded_data = self.ae_net.encode(X.to(self.device))
-        return encoded_data
+            for x, y in loader:
+                encoded_chunks.append(self.ae_net.encode(x.to(self.device)).cpu())
+                label_chunks.append(y)
+        return TensorDataset(torch.cat(encoded_chunks), torch.cat(label_chunks))
 
     def _get_data_loader(self) -> tuple:
-        trainset_len = int(len(self.X) * 0.9)
-        validset_len = len(self.X) - trainset_len
-        trainset, validset = random_split(self.X, [trainset_len, validset_len])
+        n = len(self._dataset)
+        trainset_len = int(n * 0.9)
+        validset_len = n - trainset_len
+        trainset, validset = random_split(self._dataset, [trainset_len, validset_len])
         train_loader = DataLoader(
             trainset, batch_size=self.ae_config["batch_size"], shuffle=True
         )

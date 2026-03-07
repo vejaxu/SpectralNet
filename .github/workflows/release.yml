@@ -12,6 +12,7 @@ jobs:
   release:
     name: Semantic release & publish
     runs-on: ubuntu-latest
+    environment: pypi
     # Only run when CI passes — avoid publishing broken code
     needs: []
 

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader, random_split, TensorDataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset, random_split
 from tqdm import trange
 from ._trainer import Trainer
 from .._utils import (
@@ -53,17 +53,16 @@ class SpectralTrainer:
         self.is_local_scale = self.spectral_config["is_local_scale"]
 
     def train(
-        self, X: torch.Tensor, y: torch.Tensor, siamese_net: nn.Module = None
+        self, dataset: Dataset, siamese_net: nn.Module = None
     ) -> SpectralNetModel:
         """
         Train the SpectralNet model.
 
         Parameters
         ----------
-        X : torch.Tensor
-            The dataset to train on.
-        y : torch.Tensor, optional
-            The labels of the dataset in case there are any.
+        dataset : torch.utils.data.Dataset
+            Dataset whose items are ``(x_flat, y)`` pairs.  Can be an
+            in-memory ``TensorDataset`` or any disk-streaming Dataset.
         siamese_net : nn.Module, optional
             The siamese network to use for computing the affinity matrix.
 
@@ -71,22 +70,15 @@ class SpectralTrainer:
         -------
         SpectralNetModel
             The trained SpectralNet model.
-
-        Notes
-        -----
-        This function trains the SpectralNet model using the provided dataset (`X`) and labels (`y`).
-        If labels are not provided (`y` is None), unsupervised training is performed.
-        The siamese network (`siamese_net`) is an optional parameter used for computing the affinity matrix.
-        The trained SpectralNet model is returned as the output.
         """
 
-        self.X = X.view(X.size(0), -1)
-        self.y = y
+        self._dataset = dataset
         self.counter = 0
         self.siamese_net = siamese_net
         self.criterion = SpectralNetLoss()
+        x0, _ = dataset[0]
         self.spectral_net = SpectralNetModel(
-            self.architecture, input_dim=self.X.shape[1]
+            self.architecture, input_dim=x0.numel()
         ).to(self.device)
 
         self.optimizer = optim.Adam(self.spectral_net.parameters(), lr=self.lr)
@@ -201,12 +193,10 @@ class SpectralTrainer:
         Returns:
             tuple:  The data loaders
         """
-        if self.y is None:
-            self.y = torch.zeros(len(self.X))
-        train_size = int(0.9 * len(self.X))
-        valid_size = len(self.X) - train_size
-        dataset = TensorDataset(self.X, self.y)
-        train_dataset, valid_dataset = random_split(dataset, [train_size, valid_size])
+        n = len(self._dataset)
+        train_size = int(0.9 * n)
+        valid_size = n - train_size
+        train_dataset, valid_dataset = random_split(self._dataset, [train_size, valid_size])
         train_loader = DataLoader(
             train_dataset, batch_size=self.batch_size, shuffle=True
         )

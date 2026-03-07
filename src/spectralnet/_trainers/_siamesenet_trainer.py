@@ -6,7 +6,7 @@ import torch.optim as optim
 from tqdm import trange
 from annoy import AnnoyIndex
 from sklearn.neighbors import NearestNeighbors
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Dataset, random_split
 
 from ._trainer import Trainer
 from .._models import SiameseNetModel
@@ -54,9 +54,11 @@ class SiameseTrainer:
         os.makedirs(_weights_dir, exist_ok=True)
         self.weights_path = os.path.join(_weights_dir, "siamese_weights.pth")
 
-    def train(self, X: torch.Tensor) -> SiameseNetModel:
-        self.X = X.view(X.size(0), -1)
-        # self.X = X
+    def train(self, dataset: Dataset) -> SiameseNetModel:
+        # KNN pair construction requires the full feature matrix in memory.
+        # For very large datasets pass a representative subset as the Dataset.
+        loader = DataLoader(dataset, batch_size=1024, shuffle=False)
+        self.X = torch.cat([batch[0] for batch in loader])
 
         self.criterion = ContrastiveLoss()
         self.siamese_net = SiameseNetModel(

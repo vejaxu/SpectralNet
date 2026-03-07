@@ -1,9 +1,61 @@
 import torch
 import numpy as np
 
+from typing import Union
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 from ._utils import *
 from sklearn.cluster import KMeans
 from ._trainers import SpectralTrainer, SiameseTrainer, AETrainer
+
+
+class _FeatureDataset(Dataset):
+    """Adapts a Tensor or any user-defined Dataset into consistent ``(x_flat, y)`` pairs.
+
+    This single adapter is what makes the whole pipeline scale: for small
+    datasets pass a ``torch.Tensor``; for 10 M images on disk define a
+    ``Dataset`` whose ``__getitem__`` loads one sample at a time and pass
+    that instead.  Every trainer then pulls data through its own
+    ``DataLoader``, so nothing large ever lives entirely in memory.
+
+    Parameters
+    ----------
+    source : torch.Tensor or Dataset
+        Tensor inputs are flattened to ``(N, -1)`` immediately and kept in
+        memory.  Dataset inputs are accessed lazily — only one item at a
+        time is materialised.  Dataset items must be a plain feature tensor
+        or a ``(x, y)`` tuple.
+    y : torch.Tensor, optional
+        Override labels.  Only used when *source* is a ``torch.Tensor``.
+    """
+
+    def __init__(self, source: Union[torch.Tensor, Dataset], y: torch.Tensor = None):
+        if isinstance(source, torch.Tensor):
+            self._x = source.view(source.size(0), -1)
+            self._y = (
+                y if y is not None else torch.zeros(len(self._x), dtype=torch.long)
+            )
+            self._delegate = None
+        else:
+            self._delegate = source
+            self._x = None
+            self._y = None
+
+    def __len__(self) -> int:
+        return len(self._delegate) if self._delegate is not None else len(self._x)
+
+    def __getitem__(self, idx):
+        if self._delegate is not None:
+            item = self._delegate[idx]
+            if isinstance(item, (list, tuple)):
+                x = item[0].flatten()
+                y = item[1] if len(item) > 1 else torch.tensor(0, dtype=torch.long)
+            else:
+                x = item.flatten()
+                y = torch.tensor(0, dtype=torch.long)
+        else:
+            x = self._x[idx]
+            y = self._y[idx]
+        return x, y
 
 
 class SpectralNet:
@@ -161,18 +213,25 @@ class SpectralNet:
                 "The number of units in the last layer of spectral_hiddens network must be equal to the number of clusters or components."
             )
 
-    def fit(self, X: torch.Tensor, y: torch.Tensor = None):
+    def fit(self, X: Union[torch.Tensor, Dataset], y: torch.Tensor = None):
         """Performs the main training loop for the SpectralNet model.
 
         Parameters
         ----------
-        X : torch.Tensor
-            Data to train the networks on.
-
+        X : torch.Tensor or torch.utils.data.Dataset
+            Training data.  For small datasets pass a ``torch.Tensor``.
+            For large datasets that cannot fit in RAM (e.g. 10 M images
+            stored on disk) pass a ``torch.utils.data.Dataset`` whose
+            ``__getitem__`` loads one sample at a time — nothing large
+            will be materialised in memory at once.  Dataset items must be
+            either a plain feature tensor or a ``(x, y)`` tuple; when
+            using the Dataset form, the ``y`` argument below is ignored.
         y : torch.Tensor, optional
-            Labels in case there are any. Defaults to None.
+            Integer labels.  Only used when ``X`` is a ``torch.Tensor``.
+            Defaults to None.
         """
-        self._X = X
+        dataset = _FeatureDataset(X, y=y)
+        self._dataset = dataset
         ae_config = {
             "hiddens": self.ae_hiddens,
             "epochs": self.ae_epochs,
@@ -208,46 +267,61 @@ class SpectralNet:
             "batch_size": self.spectral_batch_size,
         }
 
+        working_dataset = dataset
         if self.should_use_ae:
             self.ae_trainer = AETrainer(config=ae_config, device=self.device)
-            self.ae_net = self.ae_trainer.train(X)
-            X = self.ae_trainer.embed(X)
+            self.ae_net = self.ae_trainer.train(working_dataset)
+            working_dataset = self.ae_trainer.embed(working_dataset)
 
         if self.should_use_siamese:
             self.siamese_trainer = SiameseTrainer(
                 config=siamese_config, device=self.device
             )
-            self.siamese_net = self.siamese_trainer.train(X)
+            self.siamese_net = self.siamese_trainer.train(working_dataset)
         else:
             self.siamese_net = None
 
         is_sparse = self.is_sparse_graph
         if is_sparse:
-            build_ann(X)
+            # ANN index construction requires the full feature set in memory;
+            # iterate the dataset in batches to collect them.
+            loader = DataLoader(working_dataset, batch_size=self.spectral_batch_size)
+            X_all = torch.cat([batch[0] for batch in loader])
+            build_ann(X_all)
 
         self.spectral_trainer = SpectralTrainer(
             config=spectral_config, device=self.device, is_sparse=is_sparse
         )
-        self.spec_net = self.spectral_trainer.train(X, y, self.siamese_net)
+        self.spec_net = self.spectral_trainer.train(working_dataset, self.siamese_net)
 
-    def predict(self, X: torch.Tensor) -> np.ndarray:
+    def predict(self, X: Union[torch.Tensor, DataLoader]) -> np.ndarray:
         """Predicts the cluster assignments for the given data.
 
         Parameters
         ----------
-        X : torch.Tensor
-            Data to be clustered.
+        X : torch.Tensor or torch.utils.data.DataLoader
+            Data to cluster.  Pass a ``DataLoader`` for large datasets so
+            that samples are streamed from disk rather than loaded all at
+            once.
 
         Returns
         -------
         np.ndarray
             The cluster assignments for the given data.
         """
-        X_flat = X.view(X.size(0), -1)
+        if isinstance(X, torch.Tensor):
+            loader = DataLoader(
+                _FeatureDataset(X),
+                batch_size=self.spectral_batch_size,
+                shuffle=False,
+            )
+        else:
+            loader = X
         chunks = []
         with torch.no_grad():
-            for start in range(0, len(X_flat), self.spectral_batch_size):
-                chunk = X_flat[start : start + self.spectral_batch_size].to(self.device)
+            for batch in loader:
+                x = batch[0] if isinstance(batch, (list, tuple)) else batch
+                chunk = x.to(self.device)
                 if self.should_use_ae:
                     chunk = self.ae_net.encode(chunk)
                 chunks.append(
@@ -271,21 +345,16 @@ class SpectralNet:
             The raw batch and the encoded batch.
 
         """
-        n = len(self._X)
-        batch_size = min(batch_size, n)
-        permuted_indices = torch.randperm(n)[:batch_size]
-
-        # Select the raw batch first — avoids encoding the full dataset.
-        X_raw = self._X.view(n, -1)[permuted_indices]
-        X_encoded = X_raw.to(self.device)
-
+        # Use a DataLoader so sampling never requires the full dataset in memory.
+        loader = DataLoader(self._dataset, batch_size=batch_size, shuffle=True)
+        x_raw, _ = next(iter(loader))
+        X_encoded = x_raw.to(self.device)
         with torch.no_grad():
             if self.should_use_ae:
                 X_encoded = self.ae_net.encode(X_encoded)
             if self.should_use_siamese:
                 X_encoded = self.siamese_net.forward_once(X_encoded)
-
-        return X_raw, X_encoded
+        return x_raw, X_encoded
 
     def _get_clusters_by_kmeans(self, embeddings: np.ndarray) -> np.ndarray:
         """Performs k-means clustering on the spectral-embedding space.

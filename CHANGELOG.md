@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.0.1 (2026-03-07)
+
+### Bug Fixes
+
+- Add pypi environment to release job for OIDC trusted publishing
+  ([`288c464`](https://github.com/shaham-lab/SpectralNet/commit/288c464cb0c7f77f7fcac062ce7bbe87d7701374))
+
+
 ## v1.0.0 (2026-03-07)
 
 ### Bug Fixes

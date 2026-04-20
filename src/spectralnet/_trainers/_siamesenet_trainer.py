@@ -37,7 +37,7 @@ class SiameseDataset:
 
 
 class SiameseTrainer:
-    def __init__(self, config: dict, device: torch.device):
+    def __init__(self, config: dict, device: torch.device, weights_dir: str = None):
         self.device = device
         self.siamese_config = config
         self.lr = self.siamese_config["lr"]
@@ -49,10 +49,12 @@ class SiameseTrainer:
         self.architecture = self.siamese_config["hiddens"]
         self.batch_size = self.siamese_config["batch_size"]
         self.use_approx = self.siamese_config["use_approx"]
-        _here = os.path.dirname(os.path.abspath(__file__))
-        _weights_dir = os.path.join(_here, "weights")
-        os.makedirs(_weights_dir, exist_ok=True)
-        self.weights_path = os.path.join(_weights_dir, "siamese_weights.pth")
+        if weights_dir is None:
+            _here = os.path.dirname(os.path.abspath(__file__))
+            weights_dir = os.path.join(_here, "weights")
+        self.weights_dir = weights_dir
+        os.makedirs(self.weights_dir, exist_ok=True)
+        self.weights_path = os.path.join(self.weights_dir, "siamese_weights.pth")
 
     def train(self, dataset: Dataset) -> SiameseNetModel:
         # KNN pair construction requires the full feature matrix in memory.
@@ -72,8 +74,12 @@ class SiameseTrainer:
         )
 
         if os.path.exists(self.weights_path):
-            self.siamese_net.load_state_dict(torch.load(self.weights_path, weights_only=False))
-            return self.siamese_net
+            try:
+                self.siamese_net.load_state_dict(torch.load(self.weights_path, weights_only=False))
+                return self.siamese_net
+            except RuntimeError:
+                os.remove(self.weights_path)
+                print("  Old Siamese weights incompatible (different input dim), retraining...")
 
         train_loader, valid_loader = self._get_data_loader()
 

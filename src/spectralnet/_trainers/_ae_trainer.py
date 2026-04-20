@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Dataset, TensorDataset, random_split
 
 
 class AETrainer:
-    def __init__(self, config: dict, device: torch.device):
+    def __init__(self, config: dict, device: torch.device, weights_dir: str = None):
         self.device = device
         self.ae_config = config
         self.lr = self.ae_config["lr"]
@@ -20,8 +20,10 @@ class AETrainer:
         self.patience = self.ae_config["patience"]
         self.architecture = self.ae_config["hiddens"]
         self.batch_size = self.ae_config["batch_size"]
-        _here = os.path.dirname(os.path.abspath(__file__))
-        self.weights_dir = os.path.join(_here, "weights")
+        if weights_dir is None:
+            _here = os.path.dirname(os.path.abspath(__file__))
+            weights_dir = os.path.join(_here, "weights")
+        self.weights_dir = weights_dir
         self.weights_path = os.path.join(self.weights_dir, "ae_weights.pth")
         os.makedirs(self.weights_dir, exist_ok=True)
 
@@ -39,8 +41,13 @@ class AETrainer:
         )
 
         if os.path.exists(self.weights_path):
-            self.ae_net.load_state_dict(torch.load(self.weights_path, weights_only=False))
-            return self.ae_net
+            try:
+                self.ae_net.load_state_dict(torch.load(self.weights_path, weights_only=False))
+                return self.ae_net
+            except RuntimeError:
+                # Shape mismatch — old weights from a different dataset
+                os.remove(self.weights_path)
+                print("  Old AE weights incompatible (different input dim), retraining...")
 
         train_loader, valid_loader = self._get_data_loader()
 

@@ -39,7 +39,7 @@ class AETrainer:
         )
 
         if os.path.exists(self.weights_path):
-            self.ae_net.load_state_dict(torch.load(self.weights_path))
+            self.ae_net.load_state_dict(torch.load(self.weights_path, weights_only=False))
             return self.ae_net
 
         train_loader, valid_loader = self._get_data_loader()

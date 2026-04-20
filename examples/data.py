@@ -2,12 +2,13 @@ import h5py
 import torch
 import numpy as np
 import scipy.io
+import pickle
 
-
+from scipy.optimize import linear_sum_assignment
 from torch.utils.data import Dataset, Subset
 from sklearn.datasets import make_moons
 from torchvision import datasets, transforms
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.model_selection import train_test_split
 
 
@@ -72,6 +73,77 @@ def load_from_path(dpath: str, lpath: str = None) -> tuple:
 
     return x_train, y_train, x_test, y_test
 
+
+# ============================================================
+# KBC dataset loading utilities
+# ============================================================
+
+def load_data_from_mat(key: str, filename: str, x_key: str = 'X', y_key: str = 'y'):
+    """Load KBC-format dataset from .mat or .pkl file.
+
+    Returns
+    -------
+    X : np.ndarray
+        Feature matrix.
+    y : np.ndarray
+        Ground-truth labels (ravelled).
+    pos : np.ndarray
+        Spatial coordinates (empty if unavailable).
+    """
+    pos = np.array([])
+
+    if key in ["airway", "crohn", "tonsil", "tutorial", "151507_final"]:
+        with open(filename, 'rb') as f:
+            data = pickle.load(f)
+    else:
+        data = scipy.io.loadmat(filename)
+
+    if key in ["airway", "crohn", "tonsil", "tutorial"]:
+        X = data['expression_scaled']
+        y = data['ground_truth'].ravel()
+        pos = data['locations']
+    elif key in ["151507_final"]:
+        X = data['expression_scaled']
+        y = data['ground_truth'].ravel()
+        pos = data['locations']
+    else:
+        X = data[x_key]
+        y = data[y_key].ravel()
+
+    return X, y, pos
+
+
+def get_kbc_mat_file(key: str, base_path: str = '../data') -> str:
+    """Map dataset key to its file path."""
+    if key in ["airway", "crohn", "tonsil", "tutorial"]:
+        return f'{base_path}/single_cell/SingleCell_Dataset/processed_{key}.pkl'
+    elif key in ["non_spherical", "non_spherical_gap", "non_spherical_gap_0_5", "non_spherical_gap_0_8"]:
+        return f'{base_path}/kmeans/{key}.mat'
+    elif key.startswith('w') and key.endswith('Gaussians'):
+        return f'{base_path}/wGaussians/{key}.mat'
+    elif key in ['151507_final']:
+        return f'{base_path}/stdata/DLPFC_FINAL_PKL/{key}.pkl'
+    else:
+        return f'{base_path}/{key}.mat'
+
+
+def get_kbc_xy_keys(key: str) -> tuple:
+    """Map dataset key to its x_key / y_key for .mat files."""
+    if key in ["pendigits", "YaleB", "reuters"]:
+        return 'X', 'gtlabels'
+    elif key in ["landsat", "waveform3", "cure-t2-4k"]:
+        return 'data', 'label'
+    elif key in ["COIL20"]:
+        return 'X', 'Y'
+    elif key in ["abalone", "drybean", "letters", "skin"]:
+        return "fea", "gt"
+    else:
+        return 'data', 'class'
+
+
+# ============================================================
+# Legacy dispatcher
+# ============================================================
 
 def load_data(dataset: str) -> tuple:
     """

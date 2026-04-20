@@ -72,7 +72,7 @@ class SiameseTrainer:
         )
 
         if os.path.exists(self.weights_path):
-            self.siamese_net.load_state_dict(torch.load(self.weights_path))
+            self.siamese_net.load_state_dict(torch.load(self.weights_path, weights_only=False))
             return self.siamese_net
 
         train_loader, valid_loader = self._get_data_loader()

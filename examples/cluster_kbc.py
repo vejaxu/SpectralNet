@@ -65,6 +65,7 @@ def run_spectralnet(X_normalized, y_true, n_clusters, seed, result_dir, key, arg
         spectral_n_nbg=args.spectral_n_nbg,
         spectral_scale_k=args.spectral_scale_k,
         spectral_is_local_scale=args.spectral_is_local_scale,
+        weights_dir=result_dir,
     )
 
     start_time = time.time()

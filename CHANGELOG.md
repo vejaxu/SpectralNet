@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.1.0 (2026-04-27)
+
+### Features
+
+- Use canonical QR decomposition in _make_orthonorm_weights
+  ([`28a0cc6`](https://github.com/shaham-lab/SpectralNet/commit/28a0cc620251a6b164232810bc8f7fb8d4dddf71))
+
+
 ## v1.0.1 (2026-03-07)
 
 ### Bug Fixes

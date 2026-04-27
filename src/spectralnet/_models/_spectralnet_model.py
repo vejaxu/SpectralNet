@@ -45,6 +45,9 @@ class SpectralNetModel(nn.Module):
 
         m = Y.shape[0]
         _, R = torch.linalg.qr(Y)
+        # Canonical QR: flip row signs so diagonal of R is positive
+        signs = torch.sign(torch.diag(R))
+        R = signs.unsqueeze(1) * R
         orthonorm_weights = m**0.5 * torch.inverse(R)
         return orthonorm_weights
 

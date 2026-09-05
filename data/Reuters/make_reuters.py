@@ -12,8 +12,8 @@ def save_hdf5(X, y, name):
 
 
 def make_reuters_data():
-    np.random.seed(1234)
-    random.seed(1234)
+    np.random.seed(42)
+    random.seed(42)
     from sklearn.feature_extraction.text import CountVectorizer
     did_to_cat = {}
     cat_list = ['CCAT', 'GCAT', 'MCAT', 'ECAT']

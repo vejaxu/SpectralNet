@@ -92,6 +92,7 @@ class SpectralNet:
         spectral_scale_k: int = 15,
         spectral_is_local_scale: bool = True,
         weights_dir: str = None,
+        random_state: int = DEFAULT_RANDOM_SEED,
     ):
         """SpectralNet is a class for implementing a Deep learning model that performs spectral clustering.
         This model optionally utilizes Autoencoders (AE) and Siamese networks for training.
@@ -203,6 +204,7 @@ class SpectralNet:
         self.spectral_is_local_scale = spectral_is_local_scale
         self.spectral_batch_size = spectral_batch_size
         self.weights_dir = weights_dir
+        self.random_state = random_state
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self._validate_spectral_hiddens()
@@ -232,6 +234,7 @@ class SpectralNet:
             Integer labels.  Only used when ``X`` is a ``torch.Tensor``.
             Defaults to None.
         """
+        set_random_seed(getattr(self, "random_state", DEFAULT_RANDOM_SEED))
         dataset = _FeatureDataset(X, y=y)
         self._dataset = dataset
         ae_config = {
@@ -374,6 +377,10 @@ class SpectralNet:
             The cluster assignments for the given data.
         """
 
-        kmeans = KMeans(n_clusters=self.n_clusters, n_init=10).fit(embeddings)
+        kmeans = KMeans(
+            n_clusters=self.n_clusters,
+            n_init=10,
+            random_state=getattr(self, "random_state", DEFAULT_RANDOM_SEED),
+        ).fit(embeddings)
         cluster_assignments = kmeans.predict(embeddings)
         return cluster_assignments

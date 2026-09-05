@@ -2,7 +2,12 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
-from ._utils import get_affinity_matrix, get_laplacian, plot_laplacian_eigenvectors
+from ._utils import (
+    DEFAULT_RANDOM_SEED,
+    get_affinity_matrix,
+    get_laplacian,
+    plot_laplacian_eigenvectors,
+)
 from ._cluster import SpectralNet
 from sklearn.cluster import KMeans
 from ._metrics import Metrics
@@ -41,6 +46,7 @@ class SpectralReduction:
         spectral_n_nbg: int = 30,
         spectral_scale_k: int = 15,
         spectral_is_local_scale: bool = True,
+        random_state: int = DEFAULT_RANDOM_SEED,
     ):
         """SpectralNet is a class for implementing a Deep learning model that performs spectral clustering.
         This model optionally utilizes Autoencoders (AE) and Siamese networks for training.
@@ -149,6 +155,7 @@ class SpectralReduction:
         self.spectral_n_nbg = spectral_n_nbg
         self.spectral_scale_k = spectral_scale_k
         self.spectral_is_local_scale = spectral_is_local_scale
+        self.random_state = random_state
         self.spectral_batch_size = spectral_batch_size
         self.X_new = None
 
@@ -199,6 +206,7 @@ class SpectralReduction:
             spectral_scale_k=self.spectral_scale_k,
             spectral_is_local_scale=self.spectral_is_local_scale,
             spectral_batch_size=self.spectral_batch_size,
+            random_state=self.random_state,
         )
 
         self._spectralnet.fit(X, y)
@@ -362,6 +370,10 @@ class SpectralReduction:
             The cluster assignments for the given data.
         """
 
-        kmeans = KMeans(n_clusters=self.n_components, n_init=10).fit(embeddings)
+        kmeans = KMeans(
+            n_clusters=self.n_components,
+            n_init=10,
+            random_state=self.random_state,
+        ).fit(embeddings)
         cluster_assignments = kmeans.predict(embeddings)
         return cluster_assignments

@@ -9,6 +9,7 @@ from sklearn.neighbors import NearestNeighbors
 from torch.utils.data import DataLoader, Dataset, random_split
 
 from ._trainer import Trainer
+from .._utils import DEFAULT_RANDOM_SEED
 from .._models import SiameseNetModel
 from .._losses import ContrastiveLoss
 
@@ -208,6 +209,7 @@ class SiameseTrainer:
         data_indices = np.arange(len(x_train))
 
         ann = AnnoyIndex(X_numpy.shape[1], "euclidean")
+        ann.set_seed(DEFAULT_RANDOM_SEED)
         for i, x_ in enumerate(X_numpy):
             ann.add_item(i, x_)
         ann.build(50)

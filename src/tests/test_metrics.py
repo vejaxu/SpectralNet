@@ -44,7 +44,7 @@ class TestNmiScore:
         assert acc == pytest.approx(1.0)
 
     def test_random_labels_low_nmi(self):
-        rng = np.random.default_rng(0)
+        rng = np.random.default_rng(42)
         y = rng.integers(0, 5, 100)
         assignments = rng.integers(0, 5, 100)
         nmi = Metrics.nmi_score(assignments, y)

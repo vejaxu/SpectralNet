@@ -1,4 +1,6 @@
 import os
+import random
+
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,6 +8,21 @@ import matplotlib.colors as colors
 
 from annoy import AnnoyIndex
 from sklearn.neighbors import NearestNeighbors
+
+
+DEFAULT_RANDOM_SEED = 42
+
+
+def set_random_seed(seed: int = DEFAULT_RANDOM_SEED) -> None:
+    """Seed every random source used by SpectralNet experiments."""
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def build_ann(X: torch.Tensor):
@@ -25,6 +42,7 @@ def build_ann(X: torch.Tensor):
 
     X = X.view(X.size(0), -1)
     t = AnnoyIndex(X[0].shape[0], "euclidean")
+    t.set_seed(DEFAULT_RANDOM_SEED)
     for i, x_i in enumerate(X):
         t.add_item(i, x_i)
 

@@ -1,149 +1,105 @@
-# SpectralNet on KBC Datasets
+# SpectralNet on KBC datasets
 
-This directory contains scripts to run SpectralNet clustering on KBC-format datasets, including data loading, model training, prediction, and result saving.
+`cluster_kbc.py` trains and evaluates SpectralNet. `predict_kbc.py` reloads a
+saved model. Both scripts resolve paths from their own location, so they can be
+launched from any working directory.
 
-## Scripts
+## Paths
 
-| Script | Purpose |
-|--------|---------|
-| `cluster_kbc.py` | Train SpectralNet on a KBC dataset |
-| `predict_kbc.py` | Load a saved model and predict on the same dataset |
-| `data.py` | Data loading utilities for all supported KBC datasets |
+- Input datasets: `../data`, relative to the repository root.
+- Run artifacts: `examples/results/<dataset>/`.
+- Consolidated metrics and run parameters: `examples/results/results.csv`.
+- Override the input root with `--data_root`; result locations are fixed to keep
+  every dataset's artifacts together.
 
----
-
-## 1. Training: `cluster_kbc.py`
-
-### Basic Usage
+For example:
 
 ```bash
-python cluster_kbc.py --key pendigits
+python examples/cluster_kbc.py --key COIL20 --use_ae --use_siamese --save_model
+python examples/predict_kbc.py --key COIL20 --eval
 ```
 
-### Save Model for Later Prediction
+Each result directory may contain:
 
-```bash
-python cluster_kbc.py --key pendigits --save_model
+```text
+examples/results/COIL20/
+├── COIL20_result.csv
+├── COIL20_model.pt
+├── COIL20_scaler.pkl
+├── COIL20_predictions.npy
+├── ae_weights.pth
+├── siamese_weights.pth
+├── COIL20_dataset.jpg
+└── COIL20_clustering_result.jpg
 ```
 
-This saves two files under `results/{key}/`:
-- `{key}_model.pt` — the complete trained SpectralNet object
-- `{key}_scaler.pkl` — the fitted MinMaxScaler used during training
+The model is saved only when `--save_model` is supplied. The scaler, CSV, and
+plots are written by training; predictions are written by the prediction
+script. Re-running a dataset replaces artifacts with the same names.
 
-### Common Options
+All Python, NumPy, PyTorch CPU/CUDA, scikit-learn, and Annoy random sources use
+the fixed seed `42`. cuDNN deterministic mode is enabled and benchmarking is
+disabled.
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--key` | required | Dataset name (e.g. `pendigits`, `YaleB`, `COIL20`, `airway`) |
-| `--data_root` | `../data` | Root directory of your datasets |
-| `--save_model` | `False` | Save trained model and scaler for later prediction |
-| `--use_ae` | `False` | Enable AutoEncoder preprocessing |
-| `--use_siamese` | `False` | Enable Siamese network preprocessing |
-| `--spectral_hiddens` | `[512, 512, n_clusters]` | SpectralNet layer dimensions (last must equal `n_clusters`) |
-| `--spectral_epochs` | `30` | Number of training epochs |
-| `--spectral_lr` | `1e-3` | Learning rate |
-| `--spectral_batch_size` | `1024` | Batch size for SpectralNet training |
-| `--ae_hiddens` | `[512, 256, 64]` | AutoEncoder hidden layer dimensions |
-| `--siamese_hiddens` | `[512, 512, 64]` | Siamese network hidden layer dimensions |
+The consolidated CSV keeps the curated dataset order. Metrics and runtime use
+four decimal places; learning rates use ordinary decimal notation. A blank
+metric or parameter field means that no historical run is available for that
+dataset.
 
-### Examples
+## Common training options
 
-```bash
-# Run with default settings
-python cluster_kbc.py --key COIL20
+| Option | Default |
+| --- | --- |
+| `--use_ae` | disabled |
+| `--use_siamese` | disabled |
+| `--ae_hiddens` | `512 256 64` |
+| `--ae_epochs` | `30` |
+| `--siamese_hiddens` | `512 512 64` |
+| `--siamese_epochs` | `20` |
+| `--siamese_n_nbg` | `5` |
+| `--spectral_hiddens` | `512 512 <n_clusters>` |
+| `--spectral_epochs` | `30` |
+| `--spectral_lr` | `1e-3` |
+| `--spectral_batch_size` | `1024` |
+| `--spectral_n_nbg` | `30` |
+| `--spectral_scale_k` | `15` |
+| `--spectral_is_local_scale` | enabled |
 
-# Enable AE + Siamese (recommended for high-dimensional data)
-python cluster_kbc.py --key reuters --use_ae --use_siamese --save_model
+Use `--no-spectral_is_local_scale` to select global scaling.
 
-# Custom network architecture
-python cluster_kbc.py --key YaleB --spectral_hiddens 1024 512 38
+## Supported datasets
 
-# Spatial transcriptomics dataset (has special preprocessing)
-python cluster_kbc.py --key 151507_final --save_model
+The canonical keys are:
+
+```text
+spiral
+AC
+4C
+RingG
+complex9
+USPS
+STL-10
+Cifar-10
+ImageNet-10
+ImageNet-Dogs
+MNIST
+COIL20
+w1Gaussians
+w100Gaussians
+sparse_3_dense_3_dense_3
+sparse_8_dense_1_dense_1
+one_gaussian_10_one_line_5_2
+tutorial
+tonsil
+airway
+crohn
+dlpfc_151507
+non_spherical
+non_spherical_gap
+non_spherical_gap_0_5
+non_spherical_gap_0_8
 ```
 
-### Output Structure
-
-After running, the following files are created under `results/{key}/`:
-
-```
-results/pendigits/
-├── pendigits_result.csv          # NMI, ARI, F1, time
-├── pendigits_model.pt            # (if --save_model) trained model
-└── pendigits_scaler.pkl          # (if --save_model) fitted scaler
-```
-
-And visualization images under `fig/{key}/`:
-
-```
-fig/pendigits/
-├── pendigits_dataset.jpg         # ground truth scatter plot
-└── pendigits_clustering_result.jpg  # clustering result scatter plot
-```
-
----
-
-## 2. Prediction: `predict_kbc.py`
-
-Load a previously saved model and predict cluster assignments. You **must** have run `cluster_kbc.py --save_model` first.
-
-### Basic Usage
-
-```bash
-python predict_kbc.py --key pendigits
-```
-
-This automatically loads `results/pendigits/pendigits_model.pt` and `results/pendigits/pendigits_scaler.pkl`.
-
-### Evaluate Predictions
-
-```bash
-python predict_kbc.py --key pendigits --eval
-```
-
-Prints NMI, ARI, and F1 scores against the ground-truth labels.
-
-### Custom Paths
-
-```bash
-python predict_kbc.py --key pendigits \
-    --model_path /path/to/custom_model.pt \
-    --scaler_path /path/to/custom_scaler.pkl
-```
-
-### Save Predictions to Custom File
-
-```bash
-python predict_kbc.py --key pendigits --output my_predictions.npy
-```
-
-### Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `--key` | required | Dataset name (same as training) |
-| `--model_path` | `results/{key}/{key}_model.pt` | Path to saved model |
-| `--scaler_path` | `results/{key}/{key}_scaler.pkl` | Path to saved scaler |
-| `--data_root` | `../data` | Root directory of your datasets |
-| `--eval` | `False` | Evaluate against ground truth |
-| `--output` | `results/{key}/{key}_predictions.npy` | Output path for cluster assignments |
-
----
-
-## Supported Datasets
-
-The following dataset keys are supported out of the box:
-
-### Single-cell / Spatial
-- `airway`, `crohn`, `tonsil`, `tutorial` (`.pkl`)
-- `151507_final` (`.pkl`, with special WL feature extraction)
-
-### Classic clustering benchmarks (`.mat`)
-- `pendigits`, `YaleB`, `reuters`, `landsat`, `waveform3`
-- `cure-t2-4k`, `COIL20`, `abalone`, `drybean`, `letters`, `skin`
-
-### Synthetic
-- `non_spherical`, `non_spherical_gap`, `non_spherical_gap_0_5`, `non_spherical_gap_0_8`
-- `w1Gaussians` through `w1000Gaussians`
-
-To add a new dataset, update the path and variable-name mappings in `data.py` (`get_kbc_mat_file` and `get_kbc_xy_keys`).
+`MNIST` maps to `../data/mnist.mat`. `dlpfc_151507` maps to
+`../data/stdata/DLPFC_FINAL_PKL/151507_final.pkl` and applies the same spatial
+feature propagation during training and prediction.

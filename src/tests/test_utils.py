@@ -1,4 +1,6 @@
 """Tests for spectralnet utility functions."""
+import random
+
 import pytest
 import numpy as np
 import torch
@@ -13,7 +15,20 @@ from spectralnet._utils import (
     get_grassman_distance,
     calculate_cost_matrix,
     get_cluster_labels_from_indices,
+    set_random_seed,
 )
+
+
+def test_set_random_seed_controls_all_rngs():
+    set_random_seed(42)
+    first = (random.random(), np.random.random(), torch.rand(1))
+
+    set_random_seed(42)
+    second = (random.random(), np.random.random(), torch.rand(1))
+
+    assert first[0] == second[0]
+    assert first[1] == second[1]
+    assert torch.equal(first[2], second[2])
 
 
 class TestGetLaplacian:

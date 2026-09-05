@@ -7,7 +7,7 @@ from sklearn.datasets import make_blobs
 from spectralnet import SpectralNet
 
 
-def _make_blobs_tensor(n_samples=200, n_features=4, centers=3, seed=0):
+def _make_blobs_tensor(n_samples=200, n_features=4, centers=3, seed=42):
     X, y = make_blobs(
         n_samples=n_samples, n_features=n_features, centers=centers, random_state=seed
     )
@@ -19,6 +19,7 @@ class TestSpectralNetInit:
         # Default spectral_hiddens ends with 10, so n_clusters must match
         model = SpectralNet(n_clusters=10)
         assert model.n_clusters == 10
+        assert model.random_state == 42
 
     def test_hidden_size_mismatch_raises(self):
         with pytest.raises(ValueError):
